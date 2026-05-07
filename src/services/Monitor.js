@@ -32,7 +32,16 @@ class MonitorService {
             }
 
             try {
+                // Use profile.id primarily, fallback to profile.username
                 const newData = await downloader.getProfileData(profile.platform, profile.id || profile.username);
+
+                // Re-Sync mechanism: if we now have a verified identity (ID), update the record
+                if (profile.identityVerified === false && newData.identityVerified === true) {
+                    console.log(`Re-Sync: Upgraded identity for ${profile.username} on ${profile.platform}`);
+                    profile.id = newData.id;
+                    profile.identityVerified = true;
+                }
+
                 const changes = this.detectChanges(profile, newData);
 
                 if (changes.length > 0) {
@@ -47,7 +56,8 @@ class MonitorService {
                     updatedMonitored.push(profile);
                 }
             } catch (error) {
-                console.error(`Error monitoring ${profile.username} on ${profile.platform}:`, error.message);
+                // Isolate failure: logging it but allowing others to continue
+                console.error(`Isolated error monitoring ${profile.username} on ${profile.platform}:`, error.message);
                 updatedMonitored.push(profile);
             }
         }
@@ -90,18 +100,45 @@ class MonitorService {
             });
         }
 
-        // Post detection (simplified)
-        if (newData.posts && newData.posts.length > 0) {
-            const oldPostsIds = (oldData.posts || []).map(p => p.id);
-            const newPosts = newData.posts.filter(p => !oldPostsIds.includes(p.id));
-            if (newPosts.length > 0) {
-                changes.push({
-                    field: 'New posts',
-                    old: oldData.posts ? oldData.posts.length : 0,
-                    new: newData.posts.length,
-                    details: `${newPosts.length} new post(s) uploaded`
-                });
-            }
+        if (oldData.username !== newData.username) {
+            changes.push({
+                field: 'Username',
+                old: oldData.username,
+                new: newData.username
+            });
+        }
+
+        if (oldData.cover !== newData.cover) {
+            changes.push({
+                field: 'Cover photo',
+                old: 'Changed',
+                new: 'New cover'
+            });
+        }
+
+        // Post detection
+        const oldPostsIds = (oldData.posts || []).map(p => p.id);
+        const newPostsIds = (newData.posts || []).map(p => p.id);
+
+        const newPosts = (newData.posts || []).filter(p => !oldPostsIds.includes(p.id));
+        const deletedPostsCount = oldPostsIds.filter(id => !newPostsIds.includes(id)).length;
+
+        if (newPosts.length > 0) {
+            changes.push({
+                field: 'New posts',
+                old: oldData.posts ? oldData.posts.length : 0,
+                new: newData.posts.length,
+                details: `${newPosts.length} new post(s) uploaded`
+            });
+        }
+
+        if (deletedPostsCount > 0) {
+            changes.push({
+                field: 'Deleted posts',
+                old: oldData.posts ? oldData.posts.length : 0,
+                new: newData.posts.length,
+                details: `${deletedPostsCount} post(s) deleted`
+            });
         }
 
         return changes;

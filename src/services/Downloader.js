@@ -4,6 +4,7 @@ const tiktok = require('../platforms/TikTok');
 const facebook = require('../platforms/Facebook');
 const discord = require('../platforms/Discord');
 const axios = require('axios');
+const identityResolver = require('./IdentityResolver');
 
 class DownloaderService {
     constructor() {
@@ -19,7 +20,8 @@ class DownloaderService {
     async getProfileData(platform, identifier) {
         const handler = this.handlers[platform.toLowerCase()];
         if (!handler) throw new Error('Unsupported platform');
-        return await handler.getProfile(identifier);
+
+        return await identityResolver.resolve(handler, identifier, { platform });
     }
 
     async downloadToBuffer(url) {
@@ -35,6 +37,9 @@ class DownloaderService {
 
     formatProfileMessage(data) {
         let msg = `<b>${data.name}</b> (@${data.username})\n`;
+        if (data.identityVerified === false) {
+            msg = `⚠️ <b>Unverified Identity</b>\n` + msg;
+        }
         msg += `Platform: ${data.platform}\n`;
         if (data.followers) msg += `Followers: ${data.followers.toLocaleString()}\n`;
         if (data.bio) msg += `\nBio: ${data.bio}\n`;

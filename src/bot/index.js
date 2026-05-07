@@ -7,6 +7,9 @@ const { linkDetectionMiddleware, detectPlatform } = require('./middleware');
 
 const bot = new Telegraf(TELEGRAM_TOKEN || 'DUMMY_TOKEN');
 
+// Platform selection handlers
+const platforms = ['facebook', 'instagram', 'tiktok', 'youtube', 'discord'];
+
 bot.use(linkDetectionMiddleware);
 
 if (!TELEGRAM_TOKEN) {
@@ -110,17 +113,21 @@ bot.on('text', async (ctx, next) => {
             const data = await downloader.getProfileData(ctx.state.detectedPlatform, ctx.state.detectedUrl);
             await downloader.sendProfileInfo(ctx, data);
 
-            // Add to monitoring
-            const monitored = await getMonitored();
-            if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
-                monitored.push({
-                    ...data,
-                    userId: ctx.from.id,
-                    active: true,
-                    lastChecked: new Date().toISOString()
-                });
-                await saveMonitored(monitored);
-                ctx.reply('Profile added to monitoring list.');
+            // Add to monitoring (only if verified)
+            if (data.identityVerified !== false) {
+                const monitored = await getMonitored();
+                if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
+                    monitored.push({
+                        ...data,
+                        userId: ctx.from.id,
+                        active: true,
+                        lastChecked: new Date().toISOString()
+                    });
+                    await saveMonitored(monitored);
+                    ctx.reply('Profile added to monitoring list.');
+                }
+            } else {
+                ctx.reply('Ephemeral mode: Profile data displayed but not stored for monitoring due to unverified identity.');
             }
         } catch (error) {
             ctx.reply(`Error downloading: ${error.message}`);
@@ -137,17 +144,21 @@ bot.on('text', async (ctx, next) => {
                 const data = await downloader.getProfileData(platform, ctx.message.text);
                 await downloader.sendProfileInfo(ctx, data);
 
-                // Add to monitoring
-                const monitored = await getMonitored();
-                if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
-                    monitored.push({
-                        ...data,
-                        userId: ctx.from.id,
-                        active: true,
-                        lastChecked: new Date().toISOString()
-                    });
-                    await saveMonitored(monitored);
-                    ctx.reply('Profile added to monitoring list.');
+                // Add to monitoring (only if verified)
+                if (data.identityVerified !== false) {
+                    const monitored = await getMonitored();
+                    if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
+                        monitored.push({
+                            ...data,
+                            userId: ctx.from.id,
+                            active: true,
+                            lastChecked: new Date().toISOString()
+                        });
+                        await saveMonitored(monitored);
+                        ctx.reply('Profile added to monitoring list.');
+                    }
+                } else {
+                    ctx.reply('Ephemeral mode: Profile data displayed but not stored for monitoring due to unverified identity.');
                 }
             } catch (error) {
                 ctx.reply(`Error downloading: ${error.message}`);
@@ -169,8 +180,6 @@ bot.on('text', async (ctx, next) => {
     return next();
 });
 
-// Platform selection handlers
-const platforms = ['facebook', 'instagram', 'tiktok', 'youtube', 'discord'];
 platforms.forEach(platform => {
     bot.action(`plt_${platform}`, (ctx) => {
         ctx.answerCbQuery();
