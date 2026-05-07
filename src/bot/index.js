@@ -2,6 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 const { TELEGRAM_TOKEN } = require('../utils/config');
 const { getMonitored, getSettings, saveSettings, saveMonitored } = require('../utils/storage');
 const downloader = require('../services/Downloader');
+const idFinder = require('../services/IDFinder');
 
 const { linkDetectionMiddleware, detectPlatform } = require('./middleware');
 
@@ -42,6 +43,10 @@ bot.command('list', async (ctx) => {
     });
 
     ctx.reply(message);
+});
+
+bot.command('idfinder', (ctx) => {
+    ctx.reply('Please enter the raw ID to search for:');
 });
 
 bot.command('configuration', async (ctx) => {
@@ -113,21 +118,17 @@ bot.on('text', async (ctx, next) => {
             const data = await downloader.getProfileData(ctx.state.detectedPlatform, ctx.state.detectedUrl);
             await downloader.sendProfileInfo(ctx, data);
 
-            // Add to monitoring (only if verified)
-            if (data.identityVerified !== false) {
-                const monitored = await getMonitored();
-                if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
-                    monitored.push({
-                        ...data,
-                        userId: ctx.from.id,
-                        active: true,
-                        lastChecked: new Date().toISOString()
-                    });
-                    await saveMonitored(monitored);
-                    ctx.reply('Profile added to monitoring list.');
-                }
-            } else {
-                ctx.reply('Ephemeral mode: Profile data displayed but not stored for monitoring due to unverified identity.');
+            // Add to monitoring
+            const monitored = await getMonitored();
+            if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
+                monitored.push({
+                    ...data,
+                    userId: ctx.from.id,
+                    active: true,
+                    lastChecked: new Date().toISOString()
+                });
+                await saveMonitored(monitored);
+                ctx.reply(`Profile added to monitoring list.${data.identityVerified === false ? ' (Unverified Identity - will attempt re-sync later)' : ''}`);
             }
         } catch (error) {
             ctx.reply(`Error downloading: ${error.message}`);
@@ -144,27 +145,40 @@ bot.on('text', async (ctx, next) => {
                 const data = await downloader.getProfileData(platform, ctx.message.text);
                 await downloader.sendProfileInfo(ctx, data);
 
-                // Add to monitoring (only if verified)
-                if (data.identityVerified !== false) {
-                    const monitored = await getMonitored();
-                    if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
-                        monitored.push({
-                            ...data,
-                            userId: ctx.from.id,
-                            active: true,
-                            lastChecked: new Date().toISOString()
-                        });
-                        await saveMonitored(monitored);
-                        ctx.reply('Profile added to monitoring list.');
-                    }
-                } else {
-                    ctx.reply('Ephemeral mode: Profile data displayed but not stored for monitoring due to unverified identity.');
+                // Add to monitoring
+                const monitored = await getMonitored();
+                if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
+                    monitored.push({
+                        ...data,
+                        userId: ctx.from.id,
+                        active: true,
+                        lastChecked: new Date().toISOString()
+                    });
+                    await saveMonitored(monitored);
+                    ctx.reply(`Profile added to monitoring list.${data.identityVerified === false ? ' (Unverified Identity - will attempt re-sync later)' : ''}`);
                 }
             } catch (error) {
                 ctx.reply(`Error downloading: ${error.message}`);
             }
             return;
         }
+    }
+
+    if (ctx.message.reply_to_message && ctx.message.reply_to_message.text.includes('raw ID to search')) {
+        const id = ctx.message.text.trim();
+        ctx.reply(`Searching for ID: ${id}...`);
+
+        const results = await idFinder.find(id);
+
+        if (results.length > 0) {
+            await ctx.reply(`ID Found! Found ${results.length} match(es):`);
+            for (const data of results) {
+                await downloader.sendProfileInfo(ctx, data);
+            }
+        } else {
+            ctx.reply('Not Found or Deleted');
+        }
+        return;
     }
 
     if (ctx.message.reply_to_message && ctx.message.reply_to_message.text.includes('monitoring interval')) {
@@ -175,7 +189,12 @@ bot.on('text', async (ctx, next) => {
         const settings = await getSettings();
         settings.interval = interval;
         await saveSettings(settings);
-        return ctx.reply(`Interval set to ${interval} minutes.`);
+
+        // Restart monitor with new interval
+        const monitor = require('../services/Monitor');
+        await monitor.start(bot);
+
+        return ctx.reply(`Interval set to ${interval} minutes and monitoring restarted.`);
     }
     return next();
 });

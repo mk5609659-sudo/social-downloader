@@ -23,10 +23,17 @@ class MonitorService {
 
     async checkProfiles(bot) {
         const monitored = await getMonitored();
+        const settings = await getSettings();
         const updatedMonitored = [];
 
         for (const profile of monitored) {
             if (!profile.active) {
+                updatedMonitored.push(profile);
+                continue;
+            }
+
+            // Check if platform is enabled
+            if (settings.platforms && settings.platforms[profile.platform.toLowerCase()] === false) {
                 updatedMonitored.push(profile);
                 continue;
             }
