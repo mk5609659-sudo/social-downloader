@@ -11,14 +11,27 @@ class InstagramHandler {
         });
     }
 
-    async getProfile(username) {
+    async getProfile(identifier) {
         try {
+            let username = identifier;
+            if (identifier.startsWith('http')) {
+                const match = identifier.match(/instagram\.com\/([^/?#]+)/);
+                if (match) username = match[1];
+            }
+
             const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
-            // Using the public JSON endpoint
-            const response = await this.api.get(`/${cleanUsername}/?__a=1&__d=dis`);
+
+            // Try public JSON endpoint first
+            let response;
+            try {
+                response = await this.api.get(`/${cleanUsername}/?__a=1&__d=dis`);
+            } catch (err) {
+                // If it fails (rate limited), try basic HTML parsing
+                return await this.getProfileFromHTML(cleanUsername);
+            }
 
             if (!response.data.graphql && !response.data.user) {
-                throw new Error('User not found or rate limited');
+                return await this.getProfileFromHTML(cleanUsername);
             }
 
             const user = response.data.graphql ? response.data.graphql.user : response.data.user;
@@ -39,7 +52,7 @@ class InstagramHandler {
                 name: user.full_name,
                 bio: user.biography,
                 pfp: user.profile_pic_url_hd || user.profile_pic_url,
-                cover: null, // Instagram doesn't have profile covers
+                cover: null,
                 followers: user.edge_followed_by ? user.edge_followed_by.count : user.follower_count,
                 isPrivate: user.is_private,
                 posts: user.is_private ? [] : posts,
@@ -49,6 +62,43 @@ class InstagramHandler {
             console.error('Instagram Handler Error:', error.message);
             throw error;
         }
+    }
+
+    async getProfileFromHTML(username) {
+        const response = await this.api.get(`/${username}/`);
+        const data = response.data;
+
+        // Try extracting sharedData
+        const sharedDataMatch = data.match(/window\._sharedData\s*=\s*({.*?});/);
+        if (sharedDataMatch) {
+            const sharedData = JSON.parse(sharedDataMatch[1]);
+            const user = sharedData.entry_data.ProfilePage[0].graphql.user;
+            return this.formatUserData(user);
+        }
+
+        // Meta tags fallback
+        const nameMatch = data.match(/<meta property="og:title" content="(.*?)"/);
+        const name = nameMatch ? nameMatch[1].split(' (@')[0] : username;
+
+        const bioMatch = data.match(/<meta property="og:description" content="(.*?)"/);
+        const bio = bioMatch ? bioMatch[1] : '';
+
+        const pfpMatch = data.match(/<meta property="og:image" content="(.*?)"/);
+        const pfp = pfpMatch ? pfpMatch[1] : null;
+
+        return {
+            platform: 'Instagram',
+            id: null,
+            username: username,
+            name: name,
+            bio: bio,
+            pfp: pfp,
+            cover: null,
+            followers: 0,
+            isPrivate: false,
+            posts: [],
+            raw: {}
+        };
     }
 }
 

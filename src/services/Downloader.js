@@ -21,7 +21,8 @@ class DownloaderService {
         const handler = this.handlers[platform.toLowerCase()];
         if (!handler) throw new Error('Unsupported platform');
 
-        return await identityResolver.resolve(handler, identifier, { platform });
+        const username = identifier.startsWith('http') ? identifier : identifier;
+        return await identityResolver.resolve(handler, identifier, { platform, username });
     }
 
     async downloadToBuffer(url) {
@@ -58,11 +59,18 @@ class DownloaderService {
             media.push({ type: 'photo', media: data.cover });
         }
 
-        if (media.length > 0) {
+        if (media.length >= 2) {
             // Split media into chunks of 10 for Telegram limit
             for (let i = 0; i < media.length; i += 10) {
-                await ctx.sendMediaGroup(media.slice(i, i + 10));
+                const chunk = media.slice(i, i + 10);
+                if (chunk.length >= 2) {
+                    await ctx.sendMediaGroup(chunk);
+                } else {
+                    await ctx.replyWithPhoto(chunk[0].media);
+                }
             }
+        } else if (media.length === 1) {
+            await ctx.replyWithPhoto(media[0].media, { caption, parse_mode: 'HTML' });
         } else {
             await ctx.reply(caption, { parse_mode: 'HTML' });
         }

@@ -58,7 +58,7 @@ bot.command('list', async (ctx) => {
 });
 
 bot.command('idfinder', (ctx) => {
-    ctx.reply('Please enter the raw ID to search for:');
+    ctx.reply('Please enter the raw ID to search for:', Markup.forceReply());
 });
 
 bot.command('configuration', async (ctx) => {
@@ -72,7 +72,7 @@ bot.command('configuration', async (ctx) => {
 
 bot.action('cfg_set_interval', (ctx) => {
     ctx.answerCbQuery();
-    ctx.reply('Please send the monitoring interval in minutes (minimum 3):');
+    ctx.reply('Please send the monitoring interval in minutes (minimum 3):', Markup.forceReply());
 });
 
 bot.action('cfg_manage_profiles', async (ctx) => {
@@ -130,17 +130,21 @@ bot.on('text', async (ctx, next) => {
             const data = await downloader.getProfileData(ctx.state.detectedPlatform, ctx.state.detectedUrl);
             await downloader.sendProfileInfo(ctx, data);
 
-            // Add to monitoring
-            const monitored = await getMonitored();
-            if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
-                monitored.push({
-                    ...data,
-                    userId: ctx.from.id,
-                    active: true,
-                    lastChecked: new Date().toISOString()
-                });
-                await saveMonitored(monitored);
-                ctx.reply(`Profile added to monitoring list.${data.identityVerified === false ? ' (Unverified Identity - will attempt re-sync later)' : ''}`);
+            // Add to monitoring (only if not ephemeral)
+            if (!data.isEphemeral) {
+                const monitored = await getMonitored();
+                if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
+                    monitored.push({
+                        ...data,
+                        userId: ctx.from.id,
+                        active: true,
+                        lastChecked: new Date().toISOString()
+                    });
+                    await saveMonitored(monitored);
+                    ctx.reply(`Profile added to monitoring list.${data.identityVerified === false ? ' (Unverified Identity - will attempt re-sync later)' : ''}`);
+                }
+            } else {
+                ctx.reply('Ephemeral mode: Profile data displayed but not stored for monitoring due to missing unique identifier.');
             }
         } catch (error) {
             ctx.reply(`Error downloading: ${error.message}`);
@@ -157,17 +161,21 @@ bot.on('text', async (ctx, next) => {
                 const data = await downloader.getProfileData(platform, ctx.message.text);
                 await downloader.sendProfileInfo(ctx, data);
 
-                // Add to monitoring
-                const monitored = await getMonitored();
-                if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
-                    monitored.push({
-                        ...data,
-                        userId: ctx.from.id,
-                        active: true,
-                        lastChecked: new Date().toISOString()
-                    });
-                    await saveMonitored(monitored);
-                    ctx.reply(`Profile added to monitoring list.${data.identityVerified === false ? ' (Unverified Identity - will attempt re-sync later)' : ''}`);
+                // Add to monitoring (only if not ephemeral)
+                if (!data.isEphemeral) {
+                    const monitored = await getMonitored();
+                    if (!monitored.find(p => p.platform === data.platform && (p.id === data.id || p.username === data.username))) {
+                        monitored.push({
+                            ...data,
+                            userId: ctx.from.id,
+                            active: true,
+                            lastChecked: new Date().toISOString()
+                        });
+                        await saveMonitored(monitored);
+                        ctx.reply(`Profile added to monitoring list.${data.identityVerified === false ? ' (Unverified Identity - will attempt re-sync later)' : ''}`);
+                    }
+                } else {
+                    ctx.reply('Ephemeral mode: Profile data displayed but not stored for monitoring due to missing unique identifier.');
                 }
             } catch (error) {
                 ctx.reply(`Error downloading: ${error.message}`);
@@ -214,7 +222,7 @@ bot.on('text', async (ctx, next) => {
 platforms.forEach(platform => {
     bot.action(`plt_${platform}`, (ctx) => {
         ctx.answerCbQuery();
-        ctx.reply(`Please send the ${platform.charAt(0).toUpperCase() + platform.slice(1)} link or profile ID:`);
+        ctx.reply(`Please send the ${platform.charAt(0).toUpperCase() + platform.slice(1)} link or profile ID:`, Markup.forceReply());
     });
 });
 
