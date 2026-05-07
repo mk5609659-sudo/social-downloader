@@ -22,11 +22,23 @@ bot.start((ctx) => {
 });
 
 bot.help((ctx) => {
-    ctx.reply('Choose a platform to download from:', Markup.inlineKeyboard([
-        [Markup.button.callback('Facebook', 'plt_facebook'), Markup.button.callback('Instagram', 'plt_instagram')],
-        [Markup.button.callback('TikTok', 'plt_tiktok'), Markup.button.callback('YouTube', 'plt_youtube')],
-        [Markup.button.callback('Discord', 'plt_discord')]
-    ]));
+    let helpMsg = `<b>Available Commands:</b>\n\n`;
+    helpMsg += `/start - Welcome message\n`;
+    helpMsg += `/help - Show this help menu\n`;
+    helpMsg += `/list - List all monitored profiles\n`;
+    helpMsg += `/idfinder - Search for an ID across all platforms\n`;
+    helpMsg += `/configuration - Manage monitoring settings and profiles\n\n`;
+    helpMsg += `Or simply send a social media link to download and monitor it automatically.\n\n`;
+    helpMsg += `<b>Choose a platform for manual input:</b>`;
+
+    ctx.reply(helpMsg, {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+            [Markup.button.callback('Facebook', 'plt_facebook'), Markup.button.callback('Instagram', 'plt_instagram')],
+            [Markup.button.callback('TikTok', 'plt_tiktok'), Markup.button.callback('YouTube', 'plt_youtube')],
+            [Markup.button.callback('Discord', 'plt_discord')]
+        ])
+    });
 });
 
 bot.command('list', async (ctx) => {
